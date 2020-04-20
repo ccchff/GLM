@@ -1,0 +1,103 @@
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+dat=pd.read_excel('dat.xls')                    #读取数据
+ones=pd.DataFrame(np.repeat(1,dat.shape[0]))    #创建维度为dat.shape[0]的全为1的数据
+
+x_dat=dat.iloc[:,2:7]                           #取源数据的第3列至第7列做为特征值
+X=pd.concat([ones,x_dat],axis=1)                #合并1和特征值作为输入X 
+Y=dat.y                                         #取源数据y值作为输出Y
+
+
+###1.求B0和B1的估计值
+
+#[B0,B1]=[4.50909240e+02,3.53898056e-01,-5.61475728e-01,-7.25399095e-03,2.15778604e+01,4.35188286e-01]
+Bhat=np.linalg.inv(X.T.dot(X)).dot(X.T).dot(Y)
+
+Yhat=X.dot(Bhat)                                #计算Y的估计值Yhat
+
+
+###2.计算模型标准误
+n=dat.shape[0]                                  #样本数
+p=x_dat.shape[1]                                #特征数
+SSE=(Y-Yhat).T.dot(Y-Yhat)
+MSE=SSE/(n-p-1)
+
+#模型标准误sigmahat=49.492404133016464
+sigmahat=MSE**0.5
+
+
+###3.求SST、SSR、SSE，并计算判决系数R方的值
+
+#总离差平方和SST=13843371.75
+SST=(Y-Y.mean()).T.dot(Y-Y.mean())
+
+#残差平方和SSE=24494.980668658252              
+SSE=(Y-Yhat).T.dot(Y-Yhat)
+
+#回归平方和SSR=13818876.769331342
+SSR=SST-SSE
+
+#判定系数Rsq=0.998230562531223
+Rsq=SSR/SST
+
+
+                               
+MST=SST/(n-1)
+MSR=SSR/p
+AdjRsq=1-MSE/MST                                #调整R方
+
+
+
+###4.求B1的标准误
+c_B1=np.diag(np.linalg.inv(X.T.dot(X)))[1:6]
+
+#标准误SE(B1)=[8.52296594e-02,1.25384291e-01,2.06677862e-03,4.03005054e+00,5.15596527e-02]
+se_B1hat=sigmahat*(c_B1**0.5)
+
+
+###5.计算回归系数假设检验统计量，对回归系数B1进行检验
+B1hat=Bhat[1:6]
+
+#假设检验统计量t=[4.15228757,-4.47803886,-3.5098055,5.35424064,8.44048133]
+t_value=B1hat/se_B1hat
+
+rvt=stats.t(n-p-1)                              #创建自由度为n-p-1的t分布随机变量
+t_crit_value=rvt.ppf(0.975)                     #临界值t_crit_value=2.2281388519649385
+
+#p=[1.97281641e-03,1.18260509e-03,5.63348539e-03,3.21655887e-04,7.34117204e-06]  通过检验
+P_vt=(1-rvt.cdf(np.abs(t_value)))*2
+
+
+###6.计算F统计量的值，对整体线性显著性进行检验
+
+#F统计量的值F_v=1128.3027291393482
+F_v=MSR/MSE
+
+rvF=stats.f(p,n-p-1)                            #创建F分布
+
+#p=2.0305979120394113e-13 通过整体线性显著性检验
+P_vF=1-rvF.cdf(F_v)
+
+
+###7.对y进行点预测，并对y进行平均值和个别值区间预测
+x_new_dat=pd.DataFrame({'x1':10000,'x2':8000,'x3':100000,'x4':45,'x5':3000},index=[0])
+x_ones=pd.DataFrame(np.repeat(1,x_new_dat.shape[0])) 
+x_new=pd.concat([x_ones,x_new_dat],axis=1).values.flatten()
+
+#点预测y_pre=1049.25344924
+y_pre=x_new.dot(Bhat)
+
+#个别值预测区间[1041.23496487, 1057.27193362]
+y_ind=np.array([x_new.dot(Bhat)-t_crit_value*(1+x_new.dot(np.linalg.inv(X.T.dot(X))).dot(x_new.T))**0.5,x_new.dot(Bhat)+t_crit_value*(1+x_new.dot(np.linalg.inv(X.T.dot(X))).dot(x_new.T))**0.5])
+
+#平均值预测区间[1041.55075563, 1056.95614286]
+y_avg=np.array([x_new.dot(Bhat)-t_crit_value*(x_new.dot(np.linalg.inv(X.T.dot(X))).dot(x_new.T))**0.5,x_new.dot(Bhat)+t_crit_value*(x_new.dot(np.linalg.inv(X.T.dot(X))).dot(x_new.T))**0.5])
+
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+lm1=sm.OLS(Y,X).fit()
+type(lm1)
+lm1.summary()
